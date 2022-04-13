@@ -3,14 +3,34 @@ use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use assert_fs::TempDir;
 use predicates::prelude::*;
+use std::path::PathBuf;
 use std::process::Command;
+
+//struct TestPackage {
+//    dir: TempDir,
+//}
+//
+//impl TestPackage {
+//    pub fn new() -> Result<Self> {
+//        Ok(Self {
+//            dir: TempDir::new()?,
+//        })
+//    }
+//
+//    pub cargo_toml(&mut self, content: &str) -> Result<&mut Self> {
+//    }
+//
+//    pub fn dir(&self) -> &TempDir {
+//        &self.dir
+//    }
+//}
 
 #[test]
 fn init_reports_error_when_manifest_absent() -> Result<()> {
     let package_dir = TempDir::new()?;
     Command::cargo_bin("cargo-about")?
-        .current_dir(&package_dir)
         .arg("init")
+        .current_dir(&package_dir)
         .assert()
         .failure()
         .stderr(predicate::str::contains("could not find `Cargo.toml`"));

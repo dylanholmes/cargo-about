@@ -84,5 +84,6 @@ url = "2.2"
 [dev-dependencies]
 assert_fs = "1.0.7"
 assert_cmd = "2.0"
+indoc = "1.0.4"
 predicates = "2.1"
 toml = "0.5"
