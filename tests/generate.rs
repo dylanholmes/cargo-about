@@ -3,7 +3,6 @@ mod common;
 use anyhow::Result;
 use assert_cmd::prelude::*;
 use common::*;
-use indoc::indoc;
 use predicates::prelude::*;
 use std::process::Command;
 
@@ -66,7 +65,7 @@ fn generate_fails_when_template_file_missing() -> Result<()> {
 }
 
 #[test]
-fn generate_empty_when_no_licenses() -> Result<()> {
+fn generate_succeeds_with_warning_when_no_licenses() -> Result<()> {
     let package = Package::builder()
         .dummy_main()
         .with_simple_template()
@@ -78,7 +77,9 @@ fn generate_empty_when_no_licenses() -> Result<()> {
         .arg("my-about.hbs")
         .assert()
         .success()
-        .stdout("\n");
+        .stderr(no_licenses_found(&package))
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
@@ -115,11 +116,8 @@ fn generate_succeeds_with_warning_when_no_license_and_accepted_field_empty() -> 
         .arg("my-about.hbs")
         .assert()
         .success()
-        .stderr(predicates::str::contains(
-            "unable to synthesize license expression for 'package 0.0.0': \
-            no `license` specified, and no license files were found",
-        ))
-        .stdout("\n"); // TODO: Why does stdout contain a line feed character?
+        .stderr(no_licenses_found(&package))
+        .stdout("\n");
 
     Ok(())
 }
@@ -162,7 +160,8 @@ fn generate_succeeds_with_warning_when_license_field_unknown() -> Result<()> {
         .stderr(predicates::str::contains(
             "unable to parse license expression for 'package 0.0.0': UNKNOWN",
         ))
-        .stdout("\n");
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
@@ -205,11 +204,9 @@ fn generate_succeeds_with_warning_when_license_file_field_but_no_file() -> Resul
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
         // that the file was missing.
-        .stderr(predicates::str::contains(
-            "unable to synthesize license expression for 'package 0.0.0': \
-            no `license` specified, and no license files were found",
-        ))
-        .stdout("\n");
+        .stderr(no_licenses_found(&package))
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
@@ -231,11 +228,9 @@ fn generate_succeeds_with_warning_when_license_file_field_but_file_empty() -> Re
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
         // that the file was missing.
-        .stderr(predicates::str::contains(
-            "unable to synthesize license expression for 'package 0.0.0': \
-            no `license` specified, and no license files were found",
-        ))
-        .stdout("\n");
+        .stderr(no_licenses_found(&package))
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
@@ -262,11 +257,9 @@ fn generate_succeeds_with_warning_when_non_spdx_license_file() -> Result<()> {
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
         // that the file was missing.
-        .stderr(predicates::str::contains(
-            "unable to synthesize license expression for 'package 0.0.0': \
-            no `license` specified, and no license files were found",
-        ))
-        .stdout("\n");
+        .stderr(no_licenses_found(&package))
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
@@ -279,7 +272,10 @@ fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
     let package = Package::builder()
         .dummy_main()
         .with_simple_template()
-        .license_file("LICENSE", Some(&common::mit_license_content("Big Birdz")))
+        .license_file(
+            "LICENSE",
+            Some(&common::mit_license_content("2022", "Big Birdz")),
+        )
         .add_accepted("MIT")
         .build()?;
 
@@ -304,6 +300,9 @@ fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
     Ok(())
 }
 
+// TODO: This seems like a bug. I would've expected this to detect
+// the MIT license just the same as when the license file is named
+// "LICENSE", but it doesn't.
 #[test]
 fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Result<()> {
     let package = Package::builder()
@@ -311,7 +310,7 @@ fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Res
         .with_simple_template()
         .license_file(
             "MIT_LICENSE",
-            Some(&common::mit_license_content("Big Birdz")),
+            Some(&common::mit_license_content("2022", "Big Birdz")),
         )
         .add_accepted("MIT")
         .build()?;
@@ -322,33 +321,28 @@ fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Res
         .arg("my-about.hbs")
         .assert()
         .success()
-        .stderr(predicates::str::contains(
-            "unable to synthesize license expression for 'package 0.0.0': \
-            no `license` specified, and no license files were found",
-        ))
-        // TODO: This seems like a bug. I would've expected this to detect
-        // the MIT license just the same as when the license file is named
-        // "LICENSE", but it doesn't.
-        .stdout("\n");
+        .stderr(no_licenses_found(&package))
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
 
-// TODO: If a license file is given and an spdx identifier exists,
-// then the cutom file should be used.
 #[test]
 fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
     let package = Package::builder()
+        .name("package")
         .dummy_main()
         .with_simple_template()
         .license(Some("MIT"))
         .add_accepted("MIT")
-        .file("LICENSE", &mit_license_content("Big Birdz"))
+        .file("LICENSE", &mit_license_content("2022", "Big Birdz"))
         .build()?;
 
     let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
     let contains_mit_license = predicates::str::contains("l,MIT License,MIT,");
-    let contains_mit_license_text = predicates::str::contains(&mit_license_content("Big Birdz"));
+    let contains_mit_license_text =
+        predicates::str::contains(&mit_license_content("2022", "Big Birdz"));
 
     Command::cargo_bin("cargo-about")?
         .current_dir(&package.dir)
@@ -356,15 +350,46 @@ fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
         .arg("my-about.hbs")
         .assert()
         .success()
-        // TODO: might be nice to let the user know that there was a license file field, but
-        // that the file was missing.
-        //.stderr(predicates::str::contains(
-        //    "unable to synthesize license expression for 'package 0.0.0': \
-        //    no `license` specified, and no license files were found",
-        //))
+        .stderr("")
+        .stdout(overview_count(1))
+        .stdout(licenses_count(1))
         .stdout(contains_mit_overview)
         .stdout(contains_mit_license)
         .stdout(contains_mit_license_text);
+
+    Ok(())
+}
+
+#[test]
+fn foo() -> Result<()> {
+    let mut package_builder = Package::builder();
+    package_builder
+        .dummy_main()
+        .with_simple_template()
+        .license(Some("MIT"));
+
+    let package_b = package_builder.name("package-b").build()?;
+    let package_a = package_builder
+        .name("package-a")
+        .add_accepted("MIT")
+        .dependency(&package_b) // Well this is w
+        .build()?;
+
+    let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
+    let contains_mit_license = predicates::str::contains("l,MIT License,MIT,");
+
+    Command::cargo_bin("cargo-about")?
+        .current_dir(&package_a.dir)
+        .arg("generate")
+        .arg("my-about.hbs")
+        .assert()
+        .success()
+        .stderr("")
+        .stdout(overview_count(1))
+        .stdout(licenses_count(1))
+        .stdout(contains_mit_overview)
+        .stdout(contains_mit_license)
+        .stdout(contains_default_mit_license_content());
 
     Ok(())
 }

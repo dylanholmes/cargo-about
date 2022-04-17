@@ -9,15 +9,15 @@ use indoc::indoc;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::process::Command;
-use std::rc::Rc;
 
 pub struct Package {
     pub dir: TempDir,
     name: String,
+    version: String,
 }
 
 impl Package {
-    pub fn builder() -> PackageBuilder {
+    pub fn builder<'a>() -> PackageBuilder<'a> {
         PackageBuilder::default()
     }
 }
@@ -40,7 +40,7 @@ pub fn inspect(package: &Package) -> Result<()> {
     Ok(())
 }
 
-pub struct PackageBuilder {
+pub struct PackageBuilder<'a> {
     name: String,
     version: String,
     license: Option<String>,
@@ -48,26 +48,25 @@ pub struct PackageBuilder {
     accepted: HashSet<String>,
     template_filename: Option<String>,
     files: HashMap<String, String>,
-    dependencies: Vec<Rc<Package>>,
+    dependencies: Vec<&'a Package>,
 }
 
-impl PackageBuilder {
-    #[allow(dead_code)]
-    pub fn name(mut self, name: &str) -> Self {
+impl<'a> PackageBuilder<'a> {
+    pub fn name(&mut self, name: &str) -> &mut Self {
         self.name = name.into();
         self
     }
 
     #[allow(dead_code)]
-    pub fn version(mut self, version: &str) -> Self {
+    pub fn version(&mut self, version: &str) -> &mut Self {
         self.version = version.into();
         self
     }
-    pub fn license(mut self, license: Option<&str>) -> Self {
+    pub fn license(&mut self, license: Option<&str>) -> &mut Self {
         self.license = license.map(|s| s.into());
         self
     }
-    pub fn license_file(mut self, filename: &str, content: Option<&str>) -> Self {
+    pub fn license_file(&mut self, filename: &str, content: Option<&str>) -> &mut Self {
         self.license_filename = Some(filename.into());
         if let Some(content) = content {
             self.files.insert(filename.into(), content.into());
@@ -76,15 +75,15 @@ impl PackageBuilder {
         }
         self
     }
-    pub fn file(mut self, filename: &str, content: &str) -> Self {
+    pub fn file(&mut self, filename: &str, content: &str) -> &mut Self {
         self.files.insert(filename.into(), content.into());
         self
     }
-    pub fn add_accepted(mut self, name: &str) -> Self {
+    pub fn add_accepted(&mut self, name: &str) -> &mut Self {
         self.accepted.insert(name.into());
         self
     }
-    pub fn template_file(mut self, filename: &str, content: Option<&str>) -> Self {
+    pub fn template_file(&mut self, filename: &str, content: Option<&str>) -> &mut Self {
         self.template_filename = Some(filename.into());
         if let Some(content) = content {
             self.files.insert(filename.into(), content.into());
@@ -93,30 +92,38 @@ impl PackageBuilder {
         }
         self
     }
-    pub fn dependency(mut self, package: Rc<Package>) -> Self {
+    pub fn dependency(&mut self, package: &'a Package) -> &mut Self {
         self.dependencies.push(package);
         self
     }
 
-    pub fn dummy_main(self) -> Self {
+    pub fn dummy_main(&mut self) -> &mut Self {
         self.file("src/main.rs", "// dummy main")
     }
 
-    pub fn with_simple_template(self) -> Self {
+    pub fn with_simple_template(&mut self) -> &mut Self {
+        // Getting the number of overview and licenses elements
+        // by repeating a single letter on a line. This is a
+        // workaround for the fact that there doesn't seem to
+        // be a built in helper/property for getting a list's
+        // length in the rust implementation of handlebars.
         self.template_file(
             "my-about.hbs",
             Some(indoc! {r#"
+                    #o:[{{#each overview}}o{{/each}}]
                     {{#each overview}}
                     o,{{count}},{{name}},{{id}}
                     {{/each}}
+
+                    #l:[{{#each licenses}}l{{/each}}]
                     {{#each licenses}}
-                    l,{{name}},{{id}},{{source_path}},{{text}}
+                    l,{{name}},{{id}},{{source_path}},{{{text}}}
                     {{/each}}
                 "#}),
         )
     }
 
-    pub fn with_mit_license_field_defaults(self) -> Self {
+    pub fn with_mit_license_field_defaults(&mut self) -> &mut Self {
         self.with_simple_template()
             .license(Some("MIT"))
             .file("src/main.rs", "")
@@ -195,13 +202,14 @@ impl PackageBuilder {
         self.build_files(&dir)?;
 
         Ok(Package {
-            name: self.name.clone(),
             dir,
+            name: self.name.clone(),
+            version: self.version.clone(),
         })
     }
 }
 
-impl Default for PackageBuilder {
+impl Default for PackageBuilder<'_> {
     fn default() -> Self {
         PackageBuilder {
             name: "package".into(),
@@ -255,16 +263,43 @@ impl AboutGenerate {
     }
 }
 
-pub fn mit_license_content(copyright_holder: &str) -> String {
+pub fn mit_license_content(year: &str, copyright_holder: &str) -> String {
     formatdoc! {r#"
-            Copyright © 2022 {copyright_holder}
+            Copyright (c) {year} {copyright_holder}
 
-            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+            Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
             
             The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
             
-            THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+            THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
     "#,
     copyright_holder = copyright_holder
     }
+}
+
+pub fn contains_default_mit_license_content() -> predicates::str::ContainsPredicate {
+    contains_mit_license_content("<year>", "<copyright holders>")
+}
+
+pub fn contains_mit_license_content(
+    year: &str,
+    copyright_holder: &str,
+) -> predicates::str::ContainsPredicate {
+    predicates::str::contains(mit_license_content(year, copyright_holder))
+}
+
+pub fn overview_count(count: usize) -> predicates::str::ContainsPredicate {
+    predicates::str::contains(format!("#o:[{}]", "o".repeat(count)))
+}
+
+pub fn licenses_count(count: usize) -> predicates::str::ContainsPredicate {
+    predicates::str::contains(format!("#l:[{}]", "l".repeat(count)))
+}
+
+pub fn no_licenses_found(package: &Package) -> predicates::str::ContainsPredicate {
+    predicates::str::contains(format!(
+        "unable to synthesize license expression for '{} {}': \
+            no `license` specified, and no license files were found",
+        package.name, package.version
+    ))
 }
