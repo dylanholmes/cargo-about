@@ -8,7 +8,11 @@ use std::process::Command;
 
 #[test]
 fn generate_fails_when_templates_arg_missing() -> Result<()> {
-    About::generate()?
+    let package = Package::builder().build()?;
+
+    Command::cargo_bin("cargo-about")?
+        .current_dir(&package.dir)
+        .arg("generate")
         .assert()
         .failure()
         .stderr(predicate::str::is_match(
@@ -20,9 +24,12 @@ fn generate_fails_when_templates_arg_missing() -> Result<()> {
 
 #[test]
 fn generate_fails_when_manifest_absent() -> Result<()> {
-    About::generate()?
-        //.arg("my-about.hbs")
-        .template("my-about.hbs", None)?
+    let package = Package::builder().build()?;
+
+    Command::cargo_bin("cargo-about")?
+        .current_dir(&package.dir)
+        .arg("generate")
+        .arg("my-about.hbs")
         .assert()
         .failure()
         .stderr(predicate::str::is_match(
