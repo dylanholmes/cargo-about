@@ -295,7 +295,7 @@ fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
 }
 
 #[test]
-fn foo() -> Result<()> {
+fn generate_succeeds_when_dependency_has_spdx_license_field() -> Result<()> {
     let mut package_builder = Package::builder();
     package_builder.license(Some("MIT"));
 
@@ -303,7 +303,7 @@ fn foo() -> Result<()> {
     let package_a = package_builder
         .name("package-a")
         .add_accepted("MIT")
-        .dependency(&package_b) // Well this is w
+        .dependency(&package_b)
         .build()?;
 
     let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
@@ -318,6 +318,27 @@ fn foo() -> Result<()> {
         .stdout(contains_mit_overview)
         .stdout(contains_mit_license)
         .stdout(contains_default_mit_license_content());
+
+    Ok(())
+}
+
+#[test]
+fn generate_fails_when_dependency_has_no_spdx_license_field() -> Result<()> {
+    let mut package_builder = Package::builder();
+
+    let package_b = package_builder
+        .license(Some("Apache-2.0"))
+        .name("package-b")
+        .build()?;
+
+    let package_a = package_builder
+        .license(Some("MIT"))
+        .name("package-a")
+        .add_accepted("MIT")
+        .dependency(&package_b)
+        .build()?;
+
+    About::generate(&package_a)?.assert().failure();
 
     Ok(())
 }

@@ -1,10 +1,10 @@
 use anyhow::Result;
 use assert_fs::prelude::*;
 use assert_fs::TempDir;
-use core::fmt::Write;
 use indoc::indoc;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt::Debug;
 
 const CARGO_MANIFEST_FILENAME: &str = "Cargo.toml";
 const ABOUT_CONFIG_FILENAME: &str = "about.toml";
@@ -23,22 +23,30 @@ impl Package {
     }
 }
 
-#[allow(dead_code)]
-pub fn inspect(package: &Package) -> Result<()> {
-    println!(
-        "{}",
-        std::fs::read_to_string(package.dir.child(CARGO_MANIFEST_FILENAME))?
-    );
-    println!(
-        "{}",
-        std::fs::read_to_string(package.dir.child(ABOUT_CONFIG_FILENAME))?
-    );
-    println!(
-        "src/main.rs exists: {}",
-        package.dir.child("src/main.rs").exists()
-    );
-    println!("end - - ---------------------------------------------");
-    Ok(())
+// TODO: this could be better
+impl Debug for Package {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Package")?;
+        writeln!(f, "{}:", CARGO_MANIFEST_FILENAME)?;
+        writeln!(
+            f,
+            "{}",
+            std::fs::read_to_string(self.dir.child(CARGO_MANIFEST_FILENAME))
+                .unwrap_or_else(|_| "Couldn't read file.".into())
+        )?;
+        writeln!(f, "{}:", ABOUT_CONFIG_FILENAME)?;
+        writeln!(
+            f,
+            "{}",
+            std::fs::read_to_string(self.dir.child(ABOUT_CONFIG_FILENAME))
+                .unwrap_or_else(|_| "Couldn't read file.".into())
+        )?;
+        writeln!(
+            f,
+            "src/main.rs exists: {}",
+            self.dir.child("src/main.rs").exists()
+        )
+    }
 }
 
 pub struct PackageBuilder<'a> {
@@ -137,32 +145,31 @@ impl<'a> PackageBuilder<'a> {
 
     fn write_default_cargo_manifest_if_absent(&self, dir: &TempDir) -> Result<()> {
         if self.not_overridden_or_excluded(CARGO_MANIFEST_FILENAME) {
-            let mut content = String::new();
+            let mut manifest = toml_edit::Document::new();
+            let package = &mut manifest["package"];
+            *package = toml_edit::table();
 
-            writeln!(&mut content, "[package]")?;
-            writeln!(&mut content, "name = \"{}\"", self.name)?;
-            writeln!(&mut content, "version = \"{}\"", self.version)?;
+            package["name"] = toml_edit::value(self.name.clone());
+            package["version"] = toml_edit::value(self.version.clone());
+
             if let Some(license) = &self.license {
-                writeln!(&mut content, "license = \"{}\"", license)?;
+                package["license"] = toml_edit::value(license.clone());
             }
             if let Some(license_filename) = &self.license_filename {
-                writeln!(&mut content, "license_file = \"{}\"", license_filename)?;
+                package["license_file"] = toml_edit::value(license_filename.clone());
             }
 
             if !self.dependencies.is_empty() {
-                writeln!(&mut content)?;
-                writeln!(&mut content, "[dependencies]")?;
+                let dependencies = &mut manifest["dependencies"];
+                *dependencies = toml_edit::table();
                 for package in &self.dependencies {
-                    writeln!(
-                        &mut content,
-                        "{} = {{ path = \"{}\"  }}",
-                        package.name,
-                        package.dir.to_str().unwrap()
-                    )?;
+                    dependencies[&package.name]["path"] =
+                        toml_edit::value(package.dir.to_str().unwrap());
                 }
             }
 
-            dir.child(CARGO_MANIFEST_FILENAME).write_str(&content)?;
+            dir.child(CARGO_MANIFEST_FILENAME)
+                .write_str(&manifest.to_string())?;
         }
 
         Ok(())
@@ -170,25 +177,12 @@ impl<'a> PackageBuilder<'a> {
 
     fn write_default_about_config_if_absent(&self, dir: &TempDir) -> Result<()> {
         if self.not_overridden_or_excluded(ABOUT_CONFIG_FILENAME) {
-            let mut content = String::new();
+            let mut config = toml_edit::Document::new();
+            config["accepted"] =
+                toml_edit::value(toml_edit::Array::from_iter(self.accepted.iter()));
 
-            // accepted field
-            write!(&mut content, "accepted = [ ")?;
-            if !self.accepted.is_empty() {
-                write!(
-                    &mut content,
-                    "{}",
-                    self.accepted
-                        .iter()
-                        .map(|s| format!("\"{}\"", s))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )?;
-                write!(&mut content, " ")?;
-            }
-            writeln!(&mut content, "]")?;
-
-            dir.child(ABOUT_CONFIG_FILENAME).write_str(&content)?;
+            dir.child(ABOUT_CONFIG_FILENAME)
+                .write_str(&config.to_string())?;
         }
 
         Ok(())
