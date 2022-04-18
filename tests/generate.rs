@@ -1,18 +1,14 @@
 mod common;
 
 use anyhow::Result;
-use assert_cmd::prelude::*;
 use common::*;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[test]
 fn generate_fails_when_templates_arg_missing() -> Result<()> {
-    let package = Package::builder().build()?;
+    let package = Package::builder().no_template().build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
+    About::generate(&package)?
         .assert()
         .failure()
         .stderr(predicate::str::is_match(
@@ -24,12 +20,9 @@ fn generate_fails_when_templates_arg_missing() -> Result<()> {
 
 #[test]
 fn generate_fails_when_manifest_absent() -> Result<()> {
-    let package = Package::builder().build()?;
+    let package = Package::builder().no_manifest().build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .failure()
         .stderr(predicate::str::is_match(
@@ -43,10 +36,7 @@ fn generate_fails_when_manifest_absent() -> Result<()> {
 fn generate_fails_when_manifest_invalid() -> Result<()> {
     let package = Package::builder().file("Cargo.toml", "").build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .failure()
         .stderr(predicate::str::contains("failed to parse manifest"));
@@ -56,16 +46,14 @@ fn generate_fails_when_manifest_invalid() -> Result<()> {
 
 #[test]
 fn generate_fails_when_template_file_missing() -> Result<()> {
-    let package = Package::builder().dummy_main().build()?;
+    let package = Package::builder().no_template().build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
+        .arg("non-existent-about.hbs")
         .assert()
         .failure()
         .stderr(predicate::str::contains(
-            "template(s) path my-about.hbs does not exist",
+            "template(s) path non-existent-about.hbs does not exist",
         ));
 
     Ok(())
@@ -73,15 +61,9 @@ fn generate_fails_when_template_file_missing() -> Result<()> {
 
 #[test]
 fn generate_succeeds_with_warning_when_no_licenses() -> Result<()> {
-    let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
-        .build()?;
+    let package = Package::builder().build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stderr(no_licenses_found(&package))
@@ -93,16 +75,9 @@ fn generate_succeeds_with_warning_when_no_licenses() -> Result<()> {
 
 #[test]
 fn generate_fails_when_missing_accepted_field() -> Result<()> {
-    let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
-        .file("about.toml", "")
-        .build()?;
+    let package = Package::builder().file("about.toml", "").build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .failure()
         .stderr(predicates::str::contains("missing field `accepted`"));
@@ -112,35 +87,23 @@ fn generate_fails_when_missing_accepted_field() -> Result<()> {
 
 #[test]
 fn generate_succeeds_with_warning_when_no_license_and_accepted_field_empty() -> Result<()> {
-    let package = Package::builder()
-        .dummy_main()
-        .template_file("my-about.hbs", Some(""))
-        .build()?;
+    let package = Package::builder().build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stderr(no_licenses_found(&package))
-        .stdout("\n");
+        .stdout(overview_count(0))
+        .stdout(licenses_count(0));
 
     Ok(())
 }
 
 #[test]
 fn generate_fails_when_license_field_valid_and_accepted_field_empty() -> Result<()> {
-    let package = Package::builder()
-        .license(Some("MIT"))
-        .template_file("my-about.hbs", Some(""))
-        .dummy_main()
-        .build()?;
+    let package = Package::builder().license(Some("MIT")).build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .failure()
         .stderr(predicates::str::contains(
@@ -158,10 +121,7 @@ fn generate_succeeds_with_warning_when_license_field_unknown() -> Result<()> {
         .license(Some("UNKNOWN"))
         .build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stderr(predicates::str::contains(
@@ -182,10 +142,7 @@ fn generate_succeeds_when_license_field_valid() -> Result<()> {
     let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
     let contains_mit_license = predicates::str::contains("l,MIT License,MIT,");
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stdout(contains_mit_overview)
@@ -197,16 +154,11 @@ fn generate_succeeds_when_license_field_valid() -> Result<()> {
 #[test]
 fn generate_succeeds_with_warning_when_license_file_field_but_no_file() -> Result<()> {
     let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
         .license_file("MIT_LICENSE", None)
         .add_accepted("MIT")
         .build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
@@ -221,16 +173,11 @@ fn generate_succeeds_with_warning_when_license_file_field_but_no_file() -> Resul
 #[test]
 fn generate_succeeds_with_warning_when_license_file_field_but_file_empty() -> Result<()> {
     let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
         .license_file("MIT_LICENSE", Some(""))
         .add_accepted("MIT")
         .build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
@@ -248,18 +195,13 @@ fn generate_succeeds_with_warning_when_license_file_field_but_file_empty() -> Re
 #[test]
 fn generate_succeeds_with_warning_when_non_spdx_license_file() -> Result<()> {
     let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
         .license_file(
             "LICENSE",
             Some("Copyright © 2022 Big Birdz. No permissions granted ever."),
         )
         .build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
@@ -277,8 +219,6 @@ fn generate_succeeds_with_warning_when_non_spdx_license_file() -> Result<()> {
 #[test]
 fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
     let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
         .license_file(
             "LICENSE",
             Some(&common::mit_license_content("2022", "Big Birdz")),
@@ -289,10 +229,7 @@ fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
     let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
     let contains_mit_license = predicates::str::contains("l,MIT License,MIT,");
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         // TODO: might be nice to let the user know that there was a license file field, but
@@ -313,8 +250,6 @@ fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
 #[test]
 fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Result<()> {
     let package = Package::builder()
-        .dummy_main()
-        .with_simple_template()
         .license_file(
             "MIT_LICENSE",
             Some(&common::mit_license_content("2022", "Big Birdz")),
@@ -322,10 +257,7 @@ fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Res
         .add_accepted("MIT")
         .build()?;
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stderr(no_licenses_found(&package))
@@ -339,8 +271,6 @@ fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Res
 fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
     let package = Package::builder()
         .name("package")
-        .dummy_main()
-        .with_simple_template()
         .license(Some("MIT"))
         .add_accepted("MIT")
         .file("LICENSE", &mit_license_content("2022", "Big Birdz"))
@@ -351,10 +281,7 @@ fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
     let contains_mit_license_text =
         predicates::str::contains(&mit_license_content("2022", "Big Birdz"));
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package)?
         .assert()
         .success()
         .stderr("")
@@ -370,10 +297,7 @@ fn generate_succeeds_when_custom_spdx_license_file() -> Result<()> {
 #[test]
 fn foo() -> Result<()> {
     let mut package_builder = Package::builder();
-    package_builder
-        .dummy_main()
-        .with_simple_template()
-        .license(Some("MIT"));
+    package_builder.license(Some("MIT"));
 
     let package_b = package_builder.name("package-b").build()?;
     let package_a = package_builder
@@ -385,10 +309,7 @@ fn foo() -> Result<()> {
     let contains_mit_overview = predicates::str::contains("o,1,MIT License,MIT");
     let contains_mit_license = predicates::str::contains("l,MIT License,MIT,");
 
-    Command::cargo_bin("cargo-about")?
-        .current_dir(&package_a.dir)
-        .arg("generate")
-        .arg("my-about.hbs")
+    About::generate(&package_a)?
         .assert()
         .success()
         .stderr("")
