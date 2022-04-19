@@ -123,6 +123,16 @@ impl<'a> PackageBuilder<'a> {
         self
     }
 
+    pub fn accepted(&mut self, accpeted: &[&str]) -> &mut Self {
+        self.accepted.extend(
+            accpeted
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<HashSet<_>>(),
+        );
+        self
+    }
+
     pub fn add_accepted(&mut self, name: &str) -> &mut Self {
         self.accepted.insert(name.into());
         self
@@ -163,6 +173,8 @@ impl<'a> PackageBuilder<'a> {
                 let dependencies = &mut manifest["dependencies"];
                 *dependencies = toml_edit::table();
                 for package in &self.dependencies {
+                    dependencies[&package.name]["version"] =
+                        toml_edit::value(package.version.to_string());
                     dependencies[&package.name]["path"] =
                         toml_edit::value(package.dir.to_str().unwrap());
                 }
@@ -189,8 +201,8 @@ impl<'a> PackageBuilder<'a> {
     }
 
     // required for package to contain at least one valid crate
-    fn write_default_main_if_absent(&self, dir: &TempDir) -> Result<()> {
-        let filename = "src/main.rs";
+    fn write_default_lib_if_absent(&self, dir: &TempDir) -> Result<()> {
+        let filename = "src/lib.rs";
         if self.not_overridden_or_excluded(filename) {
             dir.child(filename).write_str("")?;
         }
@@ -213,7 +225,8 @@ impl<'a> PackageBuilder<'a> {
 
                     #l:[{{#each licenses}}l{{/each}}]
                     {{#each licenses}}
-                    l,{{name}},{{id}},{{source_path}},{{{text}}}
+                    l,{{name}},{{id}},{{source_path}}
+                    {{{text}}}
                     {{/each}}
                 "#})?;
         }
@@ -236,7 +249,7 @@ impl<'a> PackageBuilder<'a> {
         let dir = TempDir::new()?;
         self.write_default_cargo_manifest_if_absent(&dir)?;
         self.write_default_about_config_if_absent(&dir)?;
-        self.write_default_main_if_absent(&dir)?;
+        self.write_default_lib_if_absent(&dir)?;
         self.write_default_template_if_absent(&dir)?;
         self.write_files(&dir)?;
 
