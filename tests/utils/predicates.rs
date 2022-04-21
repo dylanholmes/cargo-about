@@ -1,4 +1,4 @@
-use crate::common::package::Package;
+use crate::utils::Package;
 
 use indoc::formatdoc;
 

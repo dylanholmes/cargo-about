@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
 
-const CARGO_MANIFEST_FILENAME: &str = "Cargo.toml";
-const ABOUT_CONFIG_FILENAME: &str = "about.toml";
-const ABOUT_TEMPLATE_FILENAME: &str = "about.hbs";
+pub const CARGO_MANIFEST_FILENAME: &str = "Cargo.toml";
+pub const ABOUT_CONFIG_FILENAME: &str = "about.toml";
+pub const ABOUT_TEMPLATE_FILENAME: &str = "about.hbs";
 
 pub struct Package {
     pub dir: TempDir,
@@ -153,7 +153,7 @@ impl<'a> PackageBuilder<'a> {
         !self.files.contains_key(filename) && !self.excludes.contains(filename)
     }
 
-    fn write_default_cargo_manifest_if_absent(&self, dir: &TempDir) -> Result<()> {
+    fn write_default_cargo_manifest(&self, dir: &TempDir) -> Result<()> {
         if self.not_overridden_or_excluded(CARGO_MANIFEST_FILENAME) {
             let mut manifest = toml_edit::Document::new();
             let package = &mut manifest["package"];
@@ -187,7 +187,7 @@ impl<'a> PackageBuilder<'a> {
         Ok(())
     }
 
-    fn write_default_about_config_if_absent(&self, dir: &TempDir) -> Result<()> {
+    fn write_default_about_config(&self, dir: &TempDir) -> Result<()> {
         if self.not_overridden_or_excluded(ABOUT_CONFIG_FILENAME) {
             let mut config = toml_edit::Document::new();
             config["accepted"] =
@@ -201,7 +201,7 @@ impl<'a> PackageBuilder<'a> {
     }
 
     // required for package to contain at least one valid crate
-    fn write_default_lib_if_absent(&self, dir: &TempDir) -> Result<()> {
+    fn write_default_lib(&self, dir: &TempDir) -> Result<()> {
         let filename = "src/lib.rs";
         if self.not_overridden_or_excluded(filename) {
             dir.child(filename).write_str("")?;
@@ -247,9 +247,9 @@ impl<'a> PackageBuilder<'a> {
 
     pub fn build(&self) -> Result<Package> {
         let dir = TempDir::new()?;
-        self.write_default_cargo_manifest_if_absent(&dir)?;
-        self.write_default_about_config_if_absent(&dir)?;
-        self.write_default_lib_if_absent(&dir)?;
+        self.write_default_cargo_manifest(&dir)?;
+        self.write_default_about_config(&dir)?;
+        self.write_default_lib(&dir)?;
         self.write_default_template_if_absent(&dir)?;
         self.write_files(&dir)?;
 

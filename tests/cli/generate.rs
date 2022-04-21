@@ -1,7 +1,6 @@
-mod common;
+use crate::utils::*;
 
 use anyhow::Result;
-use common::*;
 use predicates::prelude::*;
 
 #[test]
@@ -45,6 +44,21 @@ fn generate_fails_when_manifest_invalid() -> Result<()> {
         .assert()
         .failure()
         .stderr(predicate::str::contains("failed to parse manifest"));
+
+    Ok(())
+}
+
+#[test]
+fn generate_falls_back_to_default_about_config_when_absent() -> Result<()> {
+    let package = Package::builder().no_about_config().build()?;
+
+    About::new(&package)?
+        .generate()
+        .template(&package.template_filename.unwrap())
+        .assert()
+        .stderr(predicate::str::contains(
+            "no 'about.toml' found, falling back to default configuration",
+        ));
 
     Ok(())
 }
@@ -243,10 +257,7 @@ fn generate_succeeds_with_warning_when_non_spdx_license_file() -> Result<()> {
 #[test]
 fn generate_succeeds_with_warning_when_spdx_license_file() -> Result<()> {
     let package = Package::builder()
-        .license_file(
-            "LICENSE",
-            Some(&common::mit_license_content("2022", "Big Birdz")),
-        )
+        .license_file("LICENSE", Some(&mit_license_content("2022", "Big Birdz")))
         .add_accepted("MIT")
         .build()?;
 
@@ -278,17 +289,17 @@ fn generate_succeeds_with_warning_when_spdx_license_file_non_std_naming() -> Res
     let package = Package::builder()
         .license_file(
             "MIT_LICENSE",
-            Some(&common::mit_license_content("2022", "Big Birdz")),
+            Some(&mit_license_content("2022", "Big Birdz")),
         )
         .add_accepted("MIT")
         .build()?;
 
     About::new(&package)?
         .generate()
-        .template(&package.template_filename.unwrap())
+        .template(package.template_filename.as_ref().unwrap())
         .assert()
         .success()
-        //.stderr(no_licenses_found(&package))
+        .stderr(no_licenses_found(&package))
         .stdout(overview_count(0))
         .stdout(licenses_count(0));
 
