@@ -1,7 +1,6 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use assert_fs::prelude::*;
 use assert_fs::TempDir;
-use indoc::indoc;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -18,12 +17,20 @@ pub struct Package {
 }
 
 impl Package {
+    pub fn template(&self) -> Result<&str> {
+        match self.template_filename.as_ref() {
+            Some(template) => Ok(template),
+            None => Err(anyhow!("Package '{}' has no template", self.name)),
+        }
+    }
+
     pub fn builder<'a>() -> PackageBuilder<'a> {
         PackageBuilder::default()
     }
 }
 
-// TODO: this could be better
+// TODO: This could be improved by indenting file contents, but is still
+// useful for debugging cli tests.
 impl Debug for Package {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Package")?;
@@ -123,30 +130,17 @@ impl<'a> PackageBuilder<'a> {
         self
     }
 
-    pub fn accepted(&mut self, accpeted: &[&str]) -> &mut Self {
-        self.accepted.extend(
-            accpeted
-                .iter()
-                .map(|s| s.to_string())
-                .collect::<HashSet<_>>(),
-        );
-        self
-    }
-
-    pub fn add_accepted(&mut self, name: &str) -> &mut Self {
-        self.accepted.insert(name.into());
+    pub fn accepted(&mut self, accepted: &[&str]) -> &mut Self {
+        self.accepted = accepted
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<HashSet<_>>();
         self
     }
 
     pub fn dependency(&mut self, package: &'a Package) -> &mut Self {
         self.dependencies.push(package);
         self
-    }
-
-    pub fn with_mit_license_field_defaults(&mut self) -> &mut Self {
-        self.license(Some("MIT"))
-            .file("src/main.rs", "")
-            .add_accepted("MIT")
     }
 
     fn not_overridden_or_excluded(&self, filename: &str) -> bool {
@@ -217,18 +211,22 @@ impl<'a> PackageBuilder<'a> {
             // workaround for the fact that there doesn't seem to
             // be a built in helper/property for getting a list's
             // length in the rust implementation of handlebars.
-            dir.child(ABOUT_TEMPLATE_FILENAME).write_str(indoc! {r#"
-                    #o:[{{#each overview}}o{{/each}}]
-                    {{#each overview}}
-                    o,{{count}},{{name}},{{id}}
-                    {{/each}}
-
-                    #l:[{{#each licenses}}l{{/each}}]
-                    {{#each licenses}}
-                    l,{{name}},{{id}},{{source_path}}
-                    {{{text}}}
-                    {{/each}}
-                "#})?;
+            dir.child(ABOUT_TEMPLATE_FILENAME).write_str(
+                "\
+                    The following line is used to assert on overview count:\n\
+                    #o:[{{#each overview}}o{{/each}}]\n\
+                    \n\
+                    The following line is used to assert on license count:\n\
+                    #l:[{{#each licenses}}l{{/each}}]\n\
+                    \n\
+                    The following is used to assert on license text (note that\n\
+                    the raw (non-html-escaped) text is used to make assertions\n\
+                    easier:\n\
+                    {{#each licenses}}\n\
+                    {{{text}}}\n\
+                    {{/each}}\n\
+                ",
+            )?;
         }
 
         Ok(())

@@ -82,9 +82,9 @@ twox-hash = "1.6"
 url = "2.2"
 
 [dev-dependencies]
+# Filesystems - Filesystem fixtures and assertions for testing
 assert_fs = "1.0.7"
+# Easy command initialization and assertions
 assert_cmd = "2.0"
-indoc = "1.0.4"
+# Composable first-order predicate functions
 predicates = "2.1"
-toml = "0.5"
-common_macros = "0.1"

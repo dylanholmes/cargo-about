@@ -5,10 +5,10 @@ use assert_fs::prelude::*;
 use predicates::prelude::*;
 
 #[test]
-fn init_reports_error_when_manifest_absent() -> Result<()> {
+fn fails_when_manifest_absent() -> Result<()> {
     let package = Package::builder().no_manifest().build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .assert()
         .failure()
@@ -17,10 +17,10 @@ fn init_reports_error_when_manifest_absent() -> Result<()> {
 }
 
 #[test]
-fn init_reports_error_when_manifest_empty() -> Result<()> {
+fn fails_when_manifest_empty() -> Result<()> {
     let package = Package::builder().file("Cargo.toml", "").build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .assert()
         .failure()
@@ -29,17 +29,11 @@ fn init_reports_error_when_manifest_empty() -> Result<()> {
     Ok(())
 }
 
-// TODO: Split this into two tests after refactoring the test setup code
-// - one test for "generates config"
-// - one test for "generates template"
-// - Similarly for other tests in this file
-// Should we validate the generated content? Maybe if it is easy
-// to compare with the source file... otherwise no.
 #[test]
-fn init_generates_config_when_config_and_template_absent() -> Result<()> {
+fn writes_config_and_template_by_default() -> Result<()> {
     let package = Package::builder().no_template().no_about_config().build()?;
 
-    About::new(&package)?.init().assert().success();
+    CargoAbout::new(&package)?.init().assert().success();
 
     let dir = &package.dir;
     dir.child(ABOUT_CONFIG_FILENAME)
@@ -51,10 +45,10 @@ fn init_generates_config_when_config_and_template_absent() -> Result<()> {
 }
 
 #[test]
-fn init_no_handlebars_generates_config_only() -> Result<()> {
+fn writes_config_only_when_no_handlebars_specifed() -> Result<()> {
     let package = Package::builder().no_template().no_about_config().build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .arg("--no-handlebars")
         .assert()
@@ -72,7 +66,7 @@ fn init_no_handlebars_generates_config_only() -> Result<()> {
 }
 
 #[test]
-fn init_does_not_overwrite() -> Result<()> {
+fn does_not_overwrite_by_default() -> Result<()> {
     let template_content = "A useless custom template";
     let config_content = "A useless invalid config";
 
@@ -81,7 +75,7 @@ fn init_does_not_overwrite() -> Result<()> {
         .file(ABOUT_CONFIG_FILENAME, config_content)
         .build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .assert()
         .success()
@@ -98,7 +92,7 @@ fn init_does_not_overwrite() -> Result<()> {
 }
 
 #[test]
-fn init_overwrite_overwrites() -> Result<()> {
+fn overwrites_config_and_template_when_overwrite_specified() -> Result<()> {
     let template_content = "A useless custom template";
     let config_content = "A useless invalid config";
 
@@ -107,7 +101,7 @@ fn init_overwrite_overwrites() -> Result<()> {
         .file(ABOUT_CONFIG_FILENAME, config_content)
         .build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .arg("--overwrite")
         .assert()
@@ -125,7 +119,7 @@ fn init_overwrite_overwrites() -> Result<()> {
 }
 
 #[test]
-fn init_no_handlebars_overwrite_overwrites_config_only() -> Result<()> {
+fn overwrites_config_only_when_no_handlebars_and_overwrite_specified() -> Result<()> {
     let template_content = "A useless custom template";
     let config_content = "A useless invalid config";
 
@@ -134,7 +128,7 @@ fn init_no_handlebars_overwrite_overwrites_config_only() -> Result<()> {
         .file(ABOUT_CONFIG_FILENAME, config_content)
         .build()?;
 
-    About::new(&package)?
+    CargoAbout::new(&package)?
         .init()
         .arg("--no-handlebars")
         .arg("--overwrite")
